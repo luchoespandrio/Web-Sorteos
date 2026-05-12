@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { DB_KEY, USERS_INIT, RIFAS_INIT, CORTITOS_INIT } from "../utils/constants";
  
-// ─── Lógica del sorteo (igual que en CortitosView) ────────────────────────────
+// ─── Lógica del sorteo ────────────────────────────────────────────────────────
 function runDraw(cortito) {
   const { players, bolMin, bolMax, casillerosToWin, totalSlots } = cortito;
   const counters = {};
@@ -26,40 +26,57 @@ function runDraw(cortito) {
   return { seq, winner };
 }
  
+// ─── Clave de la DB — cambiá el número al final para forzar reset en prod ────
+const CURRENT_DB_KEY = DB_KEY + "_v3";
+ 
 export function useDB() {
-  // Cargar la DB desde localStorage o crear una nueva si no existe
   const [db, setDb] = useState(() => {
     try {
-      const raw = localStorage.getItem(DB_KEY);
-      if (raw) return JSON.parse(raw);
+      const raw = localStorage.getItem(CURRENT_DB_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+ 
+        // ── Recuperar cortitos trabados en "running" ───────────────────────
+        // Si un cortito quedó en "running" (por un reload o deploy anterior),
+        // lo regresamos a "open" para que el nuevo ciclo lo procese limpiamente.
+        const hasStaleCortitos = parsed.cortitos?.some(
+          (c) => c.status === "running"
+        );
+        if (hasStaleCortitos) {
+          parsed.cortitos = parsed.cortitos.map((c) =>
+            c.status === "running" ? { ...c, status: "open" } : c
+          );
+          localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(parsed));
+        }
+ 
+        return parsed;
+      }
     } catch (e) {
       console.error("Error al cargar la DB:", e);
     }
+ 
+    // DB inicial
     const initial = {
       users: USERS_INIT,
       rifas: RIFAS_INIT,
       creditRequests: [],
       cortitos: CORTITOS_INIT,
     };
-    localStorage.setItem(DB_KEY, JSON.stringify(initial));
+    localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(initial));
     return initial;
   });
  
-  // Guardar la DB en localStorage
   const saveDB = (newDb) => {
     try {
-      localStorage.setItem(DB_KEY, JSON.stringify(newDb));
+      localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(newDb));
     } catch (e) {
       console.error("Error al guardar la DB:", e);
     }
   };
  
-  // ── Ref para rastrear cortitos que ya están siendo sorteados ───────────────
-  // Vive dentro del hook, así NO se pierde cuando los componentes se re-renderizan.
+  // ── Ref para cortitos en proceso — vive en el hook, no en los componentes ──
   const processingRef = useRef(new Set());
  
-  // ── Función que revisa si hay cortitos listos para sortear ────────────────
-  // Se llama automáticamente después de cada updateDB.
   const checkAndRunDraws = useCallback((currentDb) => {
     const readyCortito = currentDb.cortitos?.find(
       (c) =>
@@ -70,7 +87,6 @@ export function useDB() {
  
     if (!readyCortito) return;
  
-    // Marcar como en proceso ANTES de cualquier setState para evitar duplicados
     processingRef.current.add(readyCortito.id);
  
     // Paso 1: marcar como "running"
@@ -114,13 +130,11 @@ export function useDB() {
     }, 1500);
   }, []);
  
-  // ── updateDB: actualiza la DB y luego revisa si hay sorteos pendientes ────
   const updateDB = useCallback(
     (fn) => {
       setDb((prev) => {
         const next = fn(prev);
         saveDB(next);
-        // Revisar sorteos después de guardar, con el estado actualizado
         checkAndRunDraws(next);
         return next;
       });
