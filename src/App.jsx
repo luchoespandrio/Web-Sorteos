@@ -13,25 +13,30 @@ import { HowItWorksView } from "./components/game/HowItWorksView";
 import { CortitosView } from "./components/game/CortitosView";
 import { AdminPanel } from "./components/admin/AdminPanel";
 import { RequestCreditModal } from "./components/profile/RequestCreditModal";
+// ── NUEVO ──────────────────────────────────────────────────────────────────────
+import BolilleroRifas from "./components/game/BolilleroRifas";
+// ──────────────────────────────────────────────────────────────────────────────
 import { COLORS } from "./utils/constants";
-
+ 
 const { YELLOW, YELLOW2 } = COLORS;
-
+ 
 export default function RifasReal() {
-  // Estado global de la DB
   const { db, updateDB } = useDB();
-
-  // Estado de la app
+ 
   const [currentUser, setCurrentUser] = useState(null);
-  const [view, setView] = useState("ageVerification"); // Vista actual
-  const [selectedRifa, setSelectedRifa] = useState(null); // Rifa seleccionada
-  const [confirmData, setConfirmData] = useState(null); // Datos para confirmar jugada
-  const [winnerData, setWinnerData] = useState(null); // Datos del ganador
+  const [view, setView] = useState("ageVerification");
+  const [selectedRifa, setSelectedRifa] = useState(null);
+  const [confirmData, setConfirmData] = useState(null);
+  const [winnerData, setWinnerData] = useState(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState("");
-  const [notif, setNotif] = useState(null); // Notificación
-  const [showReqCredit, setShowReqCredit] = useState(false); // Modal de solicitud de créditos
-
+  const [notif, setNotif] = useState(null);
+  const [showReqCredit, setShowReqCredit] = useState(false);
+ 
+  // ── NUEVO: estado del bolillero manual ────────────────────────────────────
+  const [bolilleroRifa, setBolilleroRifa] = useState(null);
+  // ──────────────────────────────────────────────────────────────────────────
+ 
   // Mantener currentUser sincronizado con la DB
   useEffect(() => {
     if (currentUser) {
@@ -41,14 +46,12 @@ export default function RifasReal() {
       }
     }
   }, [db.users, currentUser]);
-
-  // Función para mostrar notificaciones
+ 
   const toast = useCallback((msg, type = "info") => {
     setNotif({ msg, type });
     setTimeout(() => setNotif(null), 3000);
   }, []);
-
-  // Manejar login
+ 
   const handleLogin = () => {
     const user = db.users.find(
       (u) => u.username === loginForm.username && u.password === loginForm.password
@@ -61,52 +64,35 @@ export default function RifasReal() {
       setLoginError("Usuario o contraseña incorrectos");
     }
   };
-
-  // Manejar logout
+ 
   const handleLogout = () => {
     setCurrentUser(null);
     setView("login");
     setLoginForm({ username: "", password: "" });
   };
-
-  // Lógica de sorteo automático
-  const checkAndDraw = (rifa, updatedNumbers) => {
-    const total = rifa.totalNumbers || 100;
-    const sold = Object.values(updatedNumbers).filter((n) => n.status === "reservado").length;
-    if (sold < total) return null;
-
-    // Elegir un ganador al azar
-    const entries = Object.entries(updatedNumbers);
-    const randIdx = Math.floor(Math.random() * entries.length);
-    const [winNum, winEntry] = entries[randIdx];
-    const winUser = db.users.find((u) => u.id === winEntry.userId);
-
-    return {
-      number: winNum,
-      userId: winEntry.userId,
-      name: winUser ? winUser.name : "Desconocido",
-    };
-  };
-
-  // Confirmar números seleccionados
+ 
+  // ── MODIFICADO: ya NO sortea automáticamente ──────────────────────────────
+  // Cuando se completan todos los números, la rifa pasa a "readyToDraw".
+  // El admin inicia el bolillero manualmente desde NumberGrid.
   const handleConfirmNumbers = (rifa, numbers) => {
     const total = numbers.length * rifa.pricePerNumber;
     if (currentUser.credits < total) {
       toast("Créditos insuficientes", "error");
       return;
     }
-
-    // Actualizar números de la rifa
-    const padLen = (rifa.totalNumbers || 100) >= 100 ? 2 : 2;
+ 
     let updatedNumbers = { ...rifa.numbers };
     numbers.forEach((n) => {
       updatedNumbers[n] = { status: "reservado", userId: currentUser.id };
     });
-
-    // Verificar si hay ganador
-    const winner = checkAndDraw(rifa, updatedNumbers);
-
-    // Actualizar DB
+ 
+    // Verificar si se llenaron todos los números
+    const totalSlots = rifa.totalNumbers || 100;
+    const soldCount  = Object.values(updatedNumbers).filter(
+      (n) => n.status === "reservado" || n.status === "vendido"
+    ).length;
+    const isFull = soldCount >= totalSlots;
+ 
     updateDB((prev) => {
       const newUsers = prev.users.map((u) =>
         u.id === currentUser.id ? { ...u, credits: u.credits - total } : u
@@ -116,25 +102,58 @@ export default function RifasReal() {
         return {
           ...r,
           numbers: updatedNumbers,
-          status: winner ? "finished" : "active",
-          winner: winner || null,
+          // Si se llenó → "readyToDraw" (espera sorteo manual)
+          // Si no → sigue "active"
+          status: isFull ? "readyToDraw" : "active",
+          winner: null,
         };
       });
       return { ...prev, users: newUsers, rifas: newRifas };
     });
-
+ 
     setConfirmData(null);
     setSelectedRifa(null);
-    toast(`¡${numbers.length} número${numbers.length > 1 ? "s" : ""} reservado${numbers.length > 1 ? "s" : ""}!`, "success");
-
-    if (winner) {
-      setTimeout(() => setWinnerData({ winner, rifa: { ...rifa, winner } }), 500);
+ 
+    if (isFull) {
+      toast("¡Todos los números vendidos! El admin realizará el sorteo.", "success");
     } else {
-      setView("profile");
+      toast(
+        `¡${numbers.length} número${numbers.length > 1 ? "s" : ""} reservado${numbers.length > 1 ? "s" : ""}!`,
+        "success"
+      );
     }
+ 
+    setView("lobby");
   };
-
-  // Solicitar créditos
+  // ──────────────────────────────────────────────────────────────────────────
+ 
+  // ── NUEVO: cuando el bolillero elige un ganador ───────────────────────────
+  const handleRifaWinner = useCallback((rifa, winner) => {
+    const prize =
+      Object.keys(rifa.numbers).length * rifa.pricePerNumber;
+ 
+    updateDB((prev) => {
+      const newUsers = prev.users.map((u) =>
+        u.id === winner.userId ? { ...u, credits: u.credits + prize } : u
+      );
+      const newRifas = prev.rifas.map((r) =>
+        r.id === rifa.id
+          ? { ...r, status: "finished", winner: { ...winner, prize } }
+          : r
+      );
+      return { ...prev, users: newUsers, rifas: newRifas };
+    });
+ 
+    setBolilleroRifa(null);
+    // Mostrar WinnerModal después de cerrar el bolillero
+    setTimeout(() => {
+      setWinnerData({ winner: { ...winner, prize }, rifa: { ...rifa, winner } });
+    }, 400);
+ 
+    toast(`🏆 ¡Ganó ${winner.name} con el número ${winner.number}!`, "success");
+  }, [updateDB, toast]);
+  // ──────────────────────────────────────────────────────────────────────────
+ 
   const handleRequestCredit = (amount, note) => {
     const req = {
       id: Date.now(),
@@ -152,26 +171,24 @@ export default function RifasReal() {
     setShowReqCredit(false);
     toast("Solicitud enviada al administrador", "success");
   };
-
-  // Obtener la rifa seleccionada (por si se actualizó)
-  const liveRifa = selectedRifa ? db.rifas.find((r) => r.id === selectedRifa.id) || selectedRifa : null;
-
-  // Props comunes para el Header
+ 
+  const liveRifa = selectedRifa
+    ? db.rifas.find((r) => r.id === selectedRifa.id) || selectedRifa
+    : null;
+ 
   const commonHeaderProps = {
     currentUser,
     onLogout: handleLogout,
-    onProfile: () => setView("profile"),
-    onLobby: () => setView("lobby"),
+    onProfile:    () => setView("profile"),
+    onLobby:      () => setView("lobby"),
     onHowItWorks: () => setView("howItWorks"),
-    onCortitos: () => setView("cortitos"),
+    onCortitos:   () => setView("cortitos"),
   };
-
+ 
   return (
     <>
-      {/* Notificación */}
       <Toast notif={notif} />
-
-      {/* Modal de solicitud de créditos */}
+ 
       {showReqCredit && (
         <RequestCreditModal
           currentUser={currentUser}
@@ -179,8 +196,7 @@ export default function RifasReal() {
           onCancel={() => setShowReqCredit(false)}
         />
       )}
-
-      {/* Modal de ganador */}
+ 
       {winnerData && (
         <WinnerModal
           winner={winnerData.winner}
@@ -191,8 +207,20 @@ export default function RifasReal() {
           }}
         />
       )}
-
-      {/* Verificación de edad */}
+ 
+      {/* ── NUEVO: Bolillero manual (pantalla completa) ────────────────────── */}
+      {bolilleroRifa && (
+        <BolilleroRifas
+          rifa={bolilleroRifa}
+          users={db.users}
+          currentUser={currentUser}
+          isAdmin={currentUser?.isAdmin || false}
+          onWinner={(winner) => handleRifaWinner(bolilleroRifa, winner)}
+          onClose={() => setBolilleroRifa(null)}
+        />
+      )}
+      {/* ────────────────────────────────────────────────────────────────────── */}
+ 
       {view === "ageVerification" && (
         <AgeVerificationScreen
           onVerified={() => setView("login")}
@@ -202,8 +230,7 @@ export default function RifasReal() {
           }}
         />
       )}
-
-      {/* Login */}
+ 
       {view === "login" && (
         <LoginScreen
           form={loginForm}
@@ -212,8 +239,7 @@ export default function RifasReal() {
           error={loginError}
         />
       )}
-
-      {/* Lobby (lista de rifas) */}
+ 
       {view === "lobby" && currentUser && (
         <GameLobby
           currentUser={currentUser}
@@ -226,18 +252,20 @@ export default function RifasReal() {
           onAdmin={() => setView("admin")}
         />
       )}
-
-      {/* Detalle de rifa (selección de números) */}
+ 
+      {/* ── MODIFICADO: agrega isAdmin y onOpenBolillero ──────────────────── */}
       {view === "rifa-detail" && currentUser && liveRifa && (
         <NumberGrid
           rifa={liveRifa}
           currentUser={currentUser}
           onConfirm={(nums) => setConfirmData({ rifa: liveRifa, numbers: nums })}
           onBack={() => setView("lobby")}
+          isAdmin={currentUser?.isAdmin || false}
+          onOpenBolillero={() => setBolilleroRifa(liveRifa)}
         />
       )}
-
-      {/* Perfil (mis jugadas) */}
+      {/* ────────────────────────────────────────────────────────────────────── */}
+ 
       {view === "profile" && currentUser && (
         <ProfileView
           currentUser={currentUser}
@@ -248,8 +276,7 @@ export default function RifasReal() {
           onRequestCredit={() => setShowReqCredit(true)}
         />
       )}
-
-      {/* Cómo funciona */}
+ 
       {view === "howItWorks" && currentUser && (
         <HowItWorksView
           currentUser={currentUser}
@@ -257,8 +284,7 @@ export default function RifasReal() {
           {...commonHeaderProps}
         />
       )}
-
-      {/* Cortitos */}
+ 
       {view === "cortitos" && currentUser && (
         <CortitosView
           currentUser={currentUser}
@@ -268,8 +294,7 @@ export default function RifasReal() {
           {...commonHeaderProps}
         />
       )}
-
-      {/* Panel de admin */}
+ 
       {view === "admin" && currentUser && (
         <AdminPanel
           db={db}
@@ -279,8 +304,7 @@ export default function RifasReal() {
           toast={toast}
         />
       )}
-
-      {/* Modal de confirmación */}
+ 
       {confirmData && (
         <ConfirmModal
           rifa={confirmData.rifa}
