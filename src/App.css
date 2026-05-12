@@ -182,3 +182,9 @@
     border-right-color: var(--border);
   }
 }
+
+/* Animación para el número actual en el bolillero */
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
