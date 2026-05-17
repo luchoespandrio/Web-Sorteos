@@ -59,7 +59,7 @@ function PlanillaCard({ cortito, currentUser, onJoinClick, isSelected, onSelect 
   const cas      = {};
   (cortito.seq || []).forEach(n => { cas[n] = (cas[n] || 0) + 1; });
  
-  const mySlot    = cortito.players.find(p => p.userId === currentUser.id);
+  const mySlots   = cortito.players.filter(p => p.userId === currentUser.id);
   const freeSlots = cortito.totalSlots - cortito.players.length;
   const prize     = cortito.costPerSlot * cortito.totalSlots;
   const casCols   = Array.from({ length: cortito.casillerosToWin }, (_, i) => i + 1);
@@ -83,10 +83,12 @@ function PlanillaCard({ cortito, currentUser, onJoinClick, isSelected, onSelect 
           <span style={{ fontFamily:"'Cinzel',serif", color:"#fff", fontSize:15, fontWeight:700 }}>
             {cortito.name}
           </span>
-          {mySlot && (
+          {mySlots.length > 0 && (
             <span style={{ padding:"1px 8px", borderRadius:8, fontSize:10, fontWeight:600,
               background:"rgba(78,205,196,.1)", border:"1px solid rgba(78,205,196,.3)", color:"#4ECDC4" }}>
-              Mi slot #{mySlot.slotNumber}
+              {mySlots.length === 1
+                ? `Mi slot #${mySlots[0].slotNumber}`
+                : `Mis slots: ${mySlots.map(s => `#${s.slotNumber}`).join(", ")}`}
             </span>
           )}
         </div>
@@ -120,8 +122,7 @@ function PlanillaCard({ cortito, currentUser, onJoinClick, isSelected, onSelect 
               const player   = cortito.players.find(p => p.slotNumber === sn);
               const filled   = Math.min(cas[sn] || 0, cortito.casillerosToWin);
               const isWinner = cortito.winner?.slotNumber === sn;
-              const isMe     = player?.userId === currentUser.id;
- 
+              const isMe     = player?.userId === currentUser.id; 
               return (
                 <tr key={sn} style={{
                   borderBottom:"1px solid rgba(255,255,255,.04)",
@@ -186,24 +187,33 @@ function PlanillaCard({ cortito, currentUser, onJoinClick, isSelected, onSelect 
           ))}
         </div>
  
-        {cortito.status === "open" && !mySlot && freeSlots > 0 && (
-          <button
-            onClick={e => { e.stopPropagation(); onJoinClick(cortito); }}
-            style={{
-              background:`linear-gradient(135deg,${YELLOW2},${YELLOW})`, border:"none",
-              borderRadius:8, padding:"8px 20px", color:"#000", fontSize:12, fontWeight:700,
-              cursor:"pointer", fontFamily:"'Cinzel',serif", letterSpacing:1, textTransform:"uppercase",
-            }}
-          >Unirme</button>
+        {cortito.status === "open" && freeSlots > 0 && (
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            {mySlots.length > 0 && (
+              <span style={{ color:"#4ECDC4", fontSize:12, fontWeight:600,
+                padding:"6px 14px", borderRadius:7,
+                background:"rgba(78,205,196,.08)", border:"1px solid rgba(78,205,196,.25)" }}>
+                ✓ {mySlots.length} slot{mySlots.length > 1 ? "s" : ""}
+              </span>
+            )}
+            <button
+              onClick={e => { e.stopPropagation(); onJoinClick(cortito); }}
+              style={{
+                background:`linear-gradient(135deg,${YELLOW2},${YELLOW})`, border:"none",
+                borderRadius:8, padding:"8px 20px", color:"#000", fontSize:12, fontWeight:700,
+                cursor:"pointer", fontFamily:"'Cinzel',serif", letterSpacing:1, textTransform:"uppercase",
+              }}
+            >{mySlots.length > 0 ? "+ Más slots" : "Unirme"}</button>
+          </div>
         )}
-        {cortito.status === "open" && !mySlot && freeSlots === 0 && (
+        {cortito.status === "open" && freeSlots === 0 && mySlots.length === 0 && (
           <span style={{ color:"rgba(255,255,255,.3)", fontSize:12 }}>Planilla completa</span>
         )}
-        {mySlot && cortito.status === "open" && (
+        {cortito.status === "open" && freeSlots === 0 && mySlots.length > 0 && (
           <span style={{ color:"#4ECDC4", fontSize:12, fontWeight:600,
             padding:"6px 14px", borderRadius:7,
             background:"rgba(78,205,196,.08)", border:"1px solid rgba(78,205,196,.25)" }}>
-            ✓ Inscripto
+            ✓ {mySlots.length} slot{mySlots.length > 1 ? "s" : ""} · Planilla llena
           </span>
         )}
         {cortito.status === "finished" && cortito.winner && (
@@ -384,66 +394,202 @@ function BolilleroPanel({ cortito }) {
  
 // ─── SlotModal ────────────────────────────────────────────────────────────────
 function SlotModal({ cortito, currentUser, onConfirm, onClose }) {
-  const [hovered, setHovered] = useState(null);
-  const prize     = cortito.costPerSlot * cortito.totalSlots;
-  const canAfford = currentUser.credits >= cortito.costPerSlot;
- 
+  const [selected, setSelected] = useState(new Set());
+  const [hovered,  setHovered]  = useState(null);
+
+  const prize          = cortito.costPerSlot * cortito.totalSlots;
+  const maxAffordable  = Math.floor(currentUser.credits / cortito.costPerSlot);
+  const totalCost      = selected.size * cortito.costPerSlot;
+  const canAffordMore  = (selected.size + 1) * cortito.costPerSlot <= currentUser.credits;
+
+  // Slots that already belong to this user in this cortito (opened from "+ Más slots")
+  const myExistingSlots = new Set(
+    cortito.players.filter(p => p.userId === currentUser.id).map(p => p.slotNumber)
+  );
+
+  const toggleSlot = (sn) => {
+    const isOccupied = cortito.players.some(p => p.slotNumber === sn);
+    const isMyExisting = myExistingSlots.has(sn);
+    if (isOccupied || isMyExisting) return;
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(sn)) {
+        next.delete(sn);
+      } else {
+        if (!canAffordMore && !next.has(sn)) return prev;
+        next.add(sn);
+      }
+      return next;
+    });
+  };
+
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{
       position:"fixed", inset:0, zIndex:1000, background:"rgba(0,0,0,.85)",
       backdropFilter:"blur(8px)", display:"flex", alignItems:"center",
       justifyContent:"center", fontFamily:"'Barlow Condensed',sans-serif", padding:20,
     }}>
-      <div style={{ width:"min(460px,100%)", background:"#0a0a18",
+      <div style={{ width:"min(500px,100%)", background:"#0a0a18",
         border:"1px solid rgba(201,168,76,.25)", borderRadius:16, padding:"28px",
         boxShadow:"0 20px 60px rgba(0,0,0,.7)" }}>
-        <h2 style={{ fontFamily:"'Cinzel',serif", color:"#fff", fontSize:17,
-          fontWeight:700, marginBottom:5 }}>Unirme a {cortito.name}</h2>
-        <p style={{ color:"rgba(255,255,255,.35)", fontSize:13, marginBottom:20 }}>
-          Elegí tu slot · Entrada:{" "}
-          <strong style={{ color:YELLOW }}>{cortito.costPerSlot} cr.</strong>{" "}
-          · Premio total:{" "}
-          <strong style={{ color:"#00C853" }}>{prize.toLocaleString()} cr.</strong>
+
+        {/* Header */}
+        <div style={{ marginBottom:18 }}>
+          <h2 style={{ fontFamily:"'Cinzel',serif", color:"#fff", fontSize:17, fontWeight:700, marginBottom:4 }}>
+            {cortito.name}
+          </h2>
+          <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+            {[
+              { label:"Entrada x slot", value:`${cortito.costPerSlot} cr.`, color:YELLOW },
+              { label:"Premio total",   value:`${prize.toLocaleString()} cr.`, color:"#00C853" },
+              { label:"Tu saldo",       value:`${currentUser.credits} cr.`, color:"rgba(255,255,255,.5)" },
+            ].map(s => (
+              <div key={s.label}>
+                <div style={{ color:"rgba(255,255,255,.25)", fontSize:9, textTransform:"uppercase", letterSpacing:1 }}>{s.label}</div>
+                <div style={{ color:s.color, fontWeight:700, fontSize:13 }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Instrucción */}
+        <p style={{ color:"rgba(255,255,255,.38)", fontSize:12, marginBottom:14,
+          padding:"8px 12px", borderRadius:8, background:"rgba(255,255,255,.03)",
+          border:"1px solid rgba(255,255,255,.05)" }}>
+          💡 Hacé click en los slots libres para seleccionarlos. Podés elegir varios a la vez.
+          {maxAffordable > 0 && ` Podés tomar hasta ${maxAffordable} slot${maxAffordable > 1 ? "s" : ""} con tu saldo.`}
         </p>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:8, marginBottom:20 }}>
+
+        {/* Grid de slots */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:8, marginBottom:18 }}>
           {Array.from({ length: cortito.totalSlots }, (_, i) => {
-            const sn     = i + 1;
-            const player = cortito.players.find(p => p.slotNumber === sn);
-            const isFree = !player;
+            const sn          = i + 1;
+            const occupant    = cortito.players.find(p => p.slotNumber === sn);
+            const isMyExist   = myExistingSlots.has(sn);
+            const isFree      = !occupant && !isMyExist;
+            const isSelected  = selected.has(sn);
+            const isHov       = hovered === sn;
+            const cantAfford  = isFree && !isSelected && !canAffordMore;
+
+            let bg, border, color, cursor;
+            if (isMyExist) {
+              bg = "rgba(78,205,196,.12)"; border = "2px solid rgba(78,205,196,.5)";
+              color = "#4ECDC4"; cursor = "default";
+            } else if (occupant) {
+              bg = "rgba(255,255,255,.03)"; border = "2px solid rgba(255,255,255,.06)";
+              color = "rgba(255,255,255,.18)"; cursor = "not-allowed";
+            } else if (isSelected) {
+              bg = `${bColor(sn)}33`; border = `2px solid ${bColor(sn)}`;
+              color = bColor(sn); cursor = "pointer";
+            } else if (cantAfford) {
+              bg = "rgba(255,255,255,.02)"; border = "2px solid rgba(255,255,255,.04)";
+              color = "rgba(255,255,255,.15)"; cursor = "not-allowed";
+            } else {
+              bg = isHov ? `${bColor(sn)}22` : `${bColor(sn)}10`;
+              border = `2px solid ${isHov ? `${bColor(sn)}88` : `${bColor(sn)}35`}`;
+              color = bColor(sn); cursor = "pointer";
+            }
+
             return (
               <button key={sn}
-                disabled={!isFree || !canAfford}
-                onClick={() => isFree && canAfford && onConfirm(sn)}
+                onClick={() => toggleSlot(sn)}
                 onMouseEnter={() => setHovered(sn)}
                 onMouseLeave={() => setHovered(null)}
-                title={!isFree ? `Ocupado por ${player.userName}` : `Slot ${sn} — libre`}
+                title={
+                  isMyExist  ? `Slot ${sn} — ya inscripto` :
+                  occupant   ? `Ocupado por ${occupant.userName}` :
+                  isSelected ? `Slot ${sn} — seleccionado (click para quitar)` :
+                  cantAfford ? "Sin créditos suficientes" :
+                  `Slot ${sn} — libre`
+                }
                 style={{
-                  aspectRatio:"1", borderRadius:"50%",
-                  background:!isFree ? "rgba(255,255,255,.04)" : hovered === sn ? `${bColor(sn)}33` : `${bColor(sn)}18`,
-                  border:`2px solid ${!isFree ? "rgba(255,255,255,.07)" : hovered === sn ? bColor(sn) : `${bColor(sn)}55`}`,
-                  color:!isFree ? "rgba(255,255,255,.2)" : bColor(sn),
-                  cursor:isFree && canAfford ? "pointer" : "not-allowed",
-                  display:"flex", flexDirection:"column", alignItems:"center",
-                  justifyContent:"center", gap:2, padding:"6px 4px", transition:"all .15s",
-                  transform:hovered === sn && isFree ? "scale(1.1)" : "scale(1)",
+                  aspectRatio:"1", borderRadius:"50%", background:bg, border, color,
+                  cursor, display:"flex", flexDirection:"column", alignItems:"center",
+                  justifyContent:"center", gap:2, padding:"6px 4px",
+                  transition:"all .15s",
+                  transform: (isSelected || (isHov && isFree && !cantAfford)) ? "scale(1.08)" : "scale(1)",
+                  position:"relative",
                 }}>
-                <span style={{ fontSize:13, fontWeight:700, lineHeight:1 }}>{sn}</span>
-                {!isFree && <span style={{ fontSize:11 }}>{player.avatar}</span>}
+                <span style={{ fontSize:12, fontWeight:700, lineHeight:1 }}>{sn}</span>
+                {isMyExist  && <span style={{ fontSize:9 }}>✓mío</span>}
+                {occupant && !isMyExist && <span style={{ fontSize:11 }}>{occupant.avatar}</span>}
+                {isSelected && (
+                  <div style={{
+                    position:"absolute", top:-4, right:-4, width:14, height:14,
+                    borderRadius:"50%", background:YELLOW, display:"flex",
+                    alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:700, color:"#000",
+                  }}>✓</div>
+                )}
               </button>
             );
           })}
         </div>
-        {!canAfford && (
-          <p style={{ color:"#FF6464", fontSize:12, textAlign:"center", marginBottom:14 }}>
-            ⚠ Necesitás al menos {cortito.costPerSlot} cr. Tu saldo: {currentUser.credits} cr.
-          </p>
-        )}
-        <button onClick={onClose} style={{ width:"100%", padding:"10px",
-          background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)",
-          borderRadius:8, color:"rgba(255,255,255,.45)", fontSize:13,
-          cursor:"pointer", fontFamily:"'Barlow Condensed',sans-serif" }}>
-          Cancelar
-        </button>
+
+        {/* Resumen de jugadas */}
+        <div style={{
+          marginBottom:16, padding:"12px 16px", borderRadius:10,
+          background: selected.size > 0 ? "rgba(201,168,76,.06)" : "rgba(255,255,255,.02)",
+          border: `1px solid ${selected.size > 0 ? "rgba(201,168,76,.2)" : "rgba(255,255,255,.06)"}`,
+          transition:"all .2s",
+        }}>
+          {selected.size === 0 ? (
+            <p style={{ color:"rgba(255,255,255,.22)", fontSize:12, textAlign:"center", margin:0 }}>
+              No seleccionaste ningún slot todavía
+            </p>
+          ) : (
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+              <div>
+                <div style={{ color:"rgba(255,255,255,.35)", fontSize:10, textTransform:"uppercase", letterSpacing:1 }}>
+                  Slots elegidos
+                </div>
+                <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>
+                  {[...selected].sort((a,b) => a-b).map(sn => (
+                    <span key={sn} style={{
+                      padding:"2px 8px", borderRadius:10, fontSize:11, fontWeight:700,
+                      background:`${bColor(sn)}22`, border:`1px solid ${bColor(sn)}55`, color:bColor(sn),
+                    }}>#{sn}</span>
+                  ))}
+                </div>
+              </div>
+              <div style={{ textAlign:"right" }}>
+                <div style={{ color:"rgba(255,255,255,.35)", fontSize:10, textTransform:"uppercase", letterSpacing:1 }}>
+                  Total a pagar
+                </div>
+                <div style={{ color:YELLOW, fontWeight:700, fontSize:18 }}>
+                  {totalCost.toLocaleString()} cr.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Botones */}
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={onClose} style={{ flex:1, padding:"11px",
+            background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)",
+            borderRadius:8, color:"rgba(255,255,255,.45)", fontSize:13,
+            cursor:"pointer", fontFamily:"'Barlow Condensed',sans-serif" }}>
+            Cancelar
+          </button>
+          <button
+            disabled={selected.size === 0}
+            onClick={() => selected.size > 0 && onConfirm([...selected])}
+            style={{
+              flex:2, padding:"11px",
+              background: selected.size > 0
+                ? `linear-gradient(135deg,${YELLOW2},${YELLOW})`
+                : "rgba(255,255,255,.06)",
+              border:"none", borderRadius:8,
+              color: selected.size > 0 ? "#000" : "rgba(255,255,255,.2)",
+              fontSize:13, fontWeight:700, cursor: selected.size > 0 ? "pointer" : "not-allowed",
+              fontFamily:"'Cinzel',serif", letterSpacing:.5, textTransform:"uppercase",
+              transition:"all .2s",
+            }}>
+            {selected.size === 0
+              ? "Seleccioná al menos un slot"
+              : `Confirmar ${selected.size} slot${selected.size > 1 ? "s" : ""} · ${totalCost.toLocaleString()} cr.`}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -459,32 +605,46 @@ export function CortitosView({
   const [selectedId, setSelectedId] = useState(cortitos[0]?.id || null);
   const [joinTarget, setJoinTarget] = useState(null);
  
-  // ── Unirse a una planilla ───────────────────────────────────────────────────
-  const handleConfirmJoin = (slotNumber) => {
-    if (!joinTarget) return;
- 
+  // ── Unirse a una planilla (multi-slot) ────────────────────────────────────────
+  const handleConfirmJoin = (slotNumbers) => {
+    if (!joinTarget || !slotNumbers?.length) return;
+
     updateDB(prev => {
       const cortito = prev.cortitos.find(c => c.id === joinTarget.id);
       if (!cortito) return prev;
-      if (cortito.players.find(p => p.userId === currentUser.id)) return prev;
-      if (cortito.players.some(p => p.slotNumber === slotNumber))  return prev;
-      if (currentUser.credits < cortito.costPerSlot) return prev;
- 
+
+      // Solo slots realmente libres
+      const validSlots = slotNumbers.filter(
+        sn => !cortito.players.some(p => p.slotNumber === sn)
+      );
+      if (!validSlots.length) return prev;
+
+      const totalCost = validSlots.length * cortito.costPerSlot;
+      const user = prev.users.find(u => u.id === currentUser.id);
+      if (!user || user.credits < totalCost) return prev;
+
+      const newPlayers = validSlots.map(sn => ({
+        userId:     currentUser.id,
+        userName:   currentUser.name,
+        avatar:     currentUser.avatar,
+        slotNumber: sn,
+      }));
+
       return {
         ...prev,
         users: prev.users.map(u =>
           u.id === currentUser.id
-            ? { ...u, credits: u.credits - cortito.costPerSlot }
+            ? { ...u, credits: u.credits - totalCost }
             : u
         ),
         cortitos: prev.cortitos.map(c =>
           c.id === cortito.id
-            ? { ...c, players: [...c.players, { userId:currentUser.id, userName:currentUser.name, avatar:currentUser.avatar, slotNumber }] }
+            ? { ...c, players: [...c.players, ...newPlayers] }
             : c
         ),
       };
     });
- 
+
     setJoinTarget(null);
   };
  
@@ -548,4 +708,3 @@ export function CortitosView({
     </div>
   );
 }
- 
