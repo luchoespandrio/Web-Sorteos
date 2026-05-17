@@ -10,6 +10,7 @@ export function RifaCard({ rifa, currentUser, onSelect }) {
   ).length;
   const pct        = Math.round((sold / total) * 100);
   const myNums     = Object.entries(rifa.numbers).filter(([, v]) => v.userId === currentUser.id);
+  const isActive = rifa.status === "active";
   const isFinished    = rifa.status === "finished";
   const isReadyToDraw = rifa.status === "readyToDraw";
  
@@ -231,5 +232,3 @@ export function RifaCard({ rifa, currentUser, onSelect }) {
   );
 }
  
-// helper local para no depender de rifa.status directamente en el botón
-function isActive(status) { return status === "active"; }
