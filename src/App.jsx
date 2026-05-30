@@ -11,6 +11,7 @@ import { WinnerModal } from "./components/game/WinnerModal";
 import { ProfileView } from "./components/profile/ProfileView";
 import { HowItWorksView } from "./components/game/HowItWorksView";
 import { CortitosView } from "./components/game/CortitosView";
+import { PlanillasView } from "./components/game/PlanillasView";
 import { AdminPanel } from "./components/admin/AdminPanel";
 import { RequestCreditModal } from "./components/profile/RequestCreditModal";
 // ── NUEVO ──────────────────────────────────────────────────────────────────────
@@ -183,6 +184,7 @@ export default function RifasReal() {
     onLobby:      () => setView("lobby"),
     onHowItWorks: () => setView("howItWorks"),
     onCortitos:   () => setView("cortitos"),
+    onPlanillas:  () => setView("planillas"),
   };
  
   return (
@@ -250,6 +252,7 @@ export default function RifasReal() {
           }}
           {...commonHeaderProps}
           onAdmin={() => setView("admin")}
+          onPlanillas={() => setView("planillas")}
         />
       )}
  
@@ -287,6 +290,16 @@ export default function RifasReal() {
  
       {view === "cortitos" && currentUser && (
         <CortitosView
+          currentUser={currentUser}
+          db={db}
+          updateDB={updateDB}
+          onBack={() => setView("lobby")}
+          {...commonHeaderProps}
+        />
+      )}
+ 
+      {view === "planillas" && currentUser && (
+        <PlanillasView
           currentUser={currentUser}
           db={db}
           updateDB={updateDB}

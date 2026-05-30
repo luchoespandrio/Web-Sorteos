@@ -129,6 +129,56 @@ export const CORTITOS_INIT = [
   },
 ];
 
+// Planillas iniciales
+export const PLANILLAS_INIT = [
+  {
+    id: 1,
+    name: "Sorteo Express",
+    subtitle: "Sale 7 veces",
+    prize: 20000,
+    timesOut: 7,
+    totalNumbers: 12,
+    status: "open",
+    prices: { cuarto: 5, medio: 10, entero: 20 },
+    numbers: {}, // { "1": [slot0,slot1,slot2,slot3], ... } — se popula al comprar
+    seq: [],
+    winner: null,
+  },
+  {
+    id: 2,
+    name: "Sorteo Grande",
+    subtitle: "Sale 10 veces",
+    prize: 50000,
+    timesOut: 10,
+    totalNumbers: 12,
+    status: "open",
+    prices: { cuarto: 15, medio: 30, entero: 60 },
+    numbers: {},
+    seq: [],
+    winner: null,
+  },
+  {
+    id: 3,
+    name: "Sorteo Flash",
+    subtitle: "Sale 5 veces",
+    prize: 10000,
+    timesOut: 5,
+    totalNumbers: 12,
+    status: "open",
+    prices: { cuarto: 3, medio: 6, entero: 12 },
+    numbers: {},
+    seq: [],
+    winner: null,
+  },
+];
+
+// Colores de fracciones para Planillas
+export const FRAC_COLORS = {
+  cuarto: "#7C4DFF",
+  medio:  "#00C853",
+  entero: "#C9A84C",
+};
+
 // Clave para localStorage
 export const DB_KEY = "rifasreal_db_v2";
 
@@ -136,4 +186,4 @@ export const DB_KEY = "rifasreal_db_v2";
 export const BALL_COLORS = [
   "#FF6B6B", "#FF8C00", "#FFD700", "#A8E063",
   "#4ECDC4", "#4D96FF", "#C77DFF", "#FF6CAE", "#95E1D3", "#F38181",
-];
+]
