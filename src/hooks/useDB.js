@@ -1,15 +1,15 @@
 import { useState, useCallback, useRef } from "react";
 import { DB_KEY, USERS_INIT, RIFAS_INIT, CORTITOS_INIT, PLANILLAS_INIT } from "../utils/constants";
-
-// ─── Lógica del sorteo de Cortitos ───────────────────────────────────────────
+ 
+// ─── Sorteo de Cortitos ───────────────────────────────────────────────────────
 function runDraw(cortito) {
   const { players, bolMin, bolMax, casillerosToWin, totalSlots } = cortito;
   const counters = {};
   players.forEach((p) => { counters[p.slotNumber] = 0; });
  
-  const seq   = [];
-  let winner  = null;
-  let safety  = 500;
+  const seq  = [];
+  let winner = null;
+  let safety = 500;
  
   while (!winner && safety-- > 0) {
     const n = Math.floor(Math.random() * (bolMax - bolMin + 1)) + bolMin;
@@ -25,19 +25,18 @@ function runDraw(cortito) {
  
   return { seq, winner };
 }
-
-// ─── Lógica del sorteo de Planillas ──────────────────────────────────────────
-// "Sale N veces": el bolillero sortea números 1..totalNumbers hasta que
-// alguno aparece N veces. Ese número gana; sus dueños cobran prize/4 por slot.
+ 
+// ─── Sorteo de Planillas ──────────────────────────────────────────────────────
+// El bolillero sortea números 1..totalNumbers hasta que uno sale timesOut veces.
 function runPlanillaDraw(planilla) {
   const { totalNumbers, timesOut } = planilla;
   const counters = {};
   for (let i = 1; i <= totalNumbers; i++) counters[i] = 0;
-
-  const seq    = [];
-  let winner   = null;
-  let safety   = 5000;
-
+ 
+  const seq  = [];
+  let winner = null;
+  let safety = 5000;
+ 
   while (!winner && safety-- > 0) {
     const n = Math.floor(Math.random() * totalNumbers) + 1;
     seq.push(n);
@@ -48,11 +47,11 @@ function runPlanillaDraw(planilla) {
       break;
     }
   }
-
+ 
   return { seq, winner };
 }
  
-// ─── Clave de la DB — cambiá el número al final para forzar reset en prod ────
+// ─── Clave de DB ──────────────────────────────────────────────────────────────
 const CURRENT_DB_KEY = DB_KEY + "_v3";
  
 export function useDB() {
@@ -61,33 +60,44 @@ export function useDB() {
       const raw = localStorage.getItem(CURRENT_DB_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        let dirty = false;
  
-        // ── Recuperar cortitos trabados en "running" ───────────────────────
-        // Si un cortito quedó en "running" (por un reload o deploy anterior),
-        // lo regresamos a "open" para que el nuevo ciclo lo procese limpiamente.
-        const hasStaleCortitos = parsed.cortitos?.some(
-          (c) => c.status === "running"
-        );
-        if (hasStaleCortitos) {
+        // Recuperar cortitos trabados en "running"
+        if (parsed.cortitos?.some((c) => c.status === "running")) {
           parsed.cortitos = parsed.cortitos.map((c) =>
             c.status === "running" ? { ...c, status: "open" } : c
           );
-          localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(parsed));
+          dirty = true;
         }
  
+        // Migración: agregar planillas si no existen todavía
+        if (!parsed.planillas) {
+          parsed.planillas = PLANILLAS_INIT;
+          dirty = true;
+        }
+ 
+        // Recuperar planillas trabadas en "running"
+        if (parsed.planillas?.some((p) => p.status === "running")) {
+          parsed.planillas = parsed.planillas.map((p) =>
+            p.status === "running" ? { ...p, status: "open" } : p
+          );
+          dirty = true;
+        }
+ 
+        if (dirty) localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(parsed));
         return parsed;
       }
     } catch (e) {
       console.error("Error al cargar la DB:", e);
     }
  
-    // DB inicial
+    // DB inicial (primera vez)
     const initial = {
-      users: USERS_INIT,
-      rifas: RIFAS_INIT,
+      users:          USERS_INIT,
+      rifas:          RIFAS_INIT,
       creditRequests: [],
-      cortitos: CORTITOS_INIT,
-      planillas: PLANILLAS_INIT,
+      cortitos:       CORTITOS_INIT,
+      planillas:      PLANILLAS_INIT,
     };
     localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(initial));
     return initial;
@@ -101,21 +111,20 @@ export function useDB() {
     }
   };
  
-  // ── Ref para cortitos en proceso — vive en el hook, no en los componentes ──
   const processingRef = useRef(new Set());
  
   const checkAndRunDraws = useCallback((currentDb) => {
-    // ── Cortitos ──────────────────────────────────────────────────────────────
+    // ── Cortitos ─────────────────────────────────────────────────────────────
     const readyCortito = currentDb.cortitos?.find(
       (c) =>
         c.players.length === c.totalSlots &&
         c.status === "open" &&
         !processingRef.current.has(`cortito-${c.id}`)
     );
-
+ 
     if (readyCortito) {
       processingRef.current.add(`cortito-${readyCortito.id}`);
-
+ 
       setDb((prev) => {
         const next = {
           ...prev,
@@ -126,11 +135,11 @@ export function useDB() {
         saveDB(next);
         return next;
       });
-
+ 
       setTimeout(() => {
         const prize = readyCortito.costPerSlot * readyCortito.totalSlots;
         const { seq, winner } = runDraw(readyCortito);
-
+ 
         setDb((prev) => {
           const next = {
             ...prev,
@@ -150,27 +159,26 @@ export function useDB() {
           saveDB(next);
           return next;
         });
-
+ 
         processingRef.current.delete(`cortito-${readyCortito.id}`);
       }, 1500);
     }
-
+ 
     // ── Planillas ─────────────────────────────────────────────────────────────
-    // Se dispara cuando todos los slots (totalNumbers × 4) están ocupados
+    // Se dispara cuando todos los números tienen sus 4 cuartos ocupados
     const readyPlanilla = currentDb.planillas?.find((p) => {
       if (p.status !== "open") return false;
       if (processingRef.current.has(`planilla-${p.id}`)) return false;
-      // Verificar que todos los números tienen sus 4 cuartos llenos
       for (let n = 1; n <= p.totalNumbers; n++) {
         const slots = p.numbers?.[String(n)] || [];
         if (slots.length < 4 || slots.some((s) => !s)) return false;
       }
       return true;
     });
-
+ 
     if (readyPlanilla) {
       processingRef.current.add(`planilla-${readyPlanilla.id}`);
-
+ 
       setDb((prev) => {
         const next = {
           ...prev,
@@ -181,19 +189,18 @@ export function useDB() {
         saveDB(next);
         return next;
       });
-
+ 
       setTimeout(() => {
-        const prizePerSlot = readyPlanilla.prize / 4;
+        const prizePerSlot = Math.floor(readyPlanilla.prize / 4);
         const { seq, winner } = runPlanillaDraw(readyPlanilla);
-
+ 
         setDb((prev) => {
-          // Distribuir premio entre dueños de slots del número ganador
           const slotOwners = winner?.slots?.filter(Boolean) || [];
-          const creditMap = {};
+          const creditMap  = {};
           slotOwners.forEach((slot) => {
             creditMap[slot.userId] = (creditMap[slot.userId] || 0) + prizePerSlot;
           });
-
+ 
           const next = {
             ...prev,
             users: prev.users.map((u) =>
@@ -208,7 +215,7 @@ export function useDB() {
           saveDB(next);
           return next;
         });
-
+ 
         processingRef.current.delete(`planilla-${readyPlanilla.id}`);
       }, 2000);
     }

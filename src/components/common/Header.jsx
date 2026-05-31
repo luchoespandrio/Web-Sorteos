@@ -1,9 +1,9 @@
 import React from "react";
 import { COLORS } from "../../utils/constants";
-
+ 
 const { YELLOW } = COLORS;
-
-export function Header({ currentUser, onLogout, onProfile, onLobby, onHowItWorks, onCortitos }) {
+ 
+export function Header({ currentUser, onLogout, onProfile, onLobby, onHowItWorks, onCortitos, onPlanillas }) {
   return (
     <header
       style={{
@@ -25,38 +25,23 @@ export function Header({ currentUser, onLogout, onProfile, onLobby, onHowItWorks
         onClick={onLobby}
       >
         <span style={{ fontSize: 22 }}>👑</span>
-        <span
-          style={{
-            fontFamily: "'Cinzel', serif",
-            fontSize: 18,
-            fontWeight: 900,
-            color: YELLOW,
-            letterSpacing: 3,
-          }}
-        >
+        <span style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 900, color: YELLOW, letterSpacing: 3 }}>
           RIFAS
         </span>
-        <span
-          style={{
-            fontFamily: "'Cinzel', serif",
-            fontSize: 18,
-            fontWeight: 400,
-            color: "#fff",
-            letterSpacing: 3,
-          }}
-        >
+        <span style={{ fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 400, color: "#fff", letterSpacing: 3 }}>
           REAL
         </span>
       </div>
-
+ 
       {/* Navegación */}
       <nav style={{ display: "flex", gap: 4, alignItems: "center" }}>
         {[
-          ["Rifas", onLobby],
-          ["⚡ Cortitos", onCortitos],
-          ["Mis Jugadas", onProfile],
-          ["Cómo funciona", onHowItWorks],
-        ].map(([label, fn]) => (
+          { label: "🏠 Inicio",        fn: onLobby      },
+          { label: "⚡ Cortitos",       fn: onCortitos   },
+          { label: "⭐ Sorteos",        fn: onPlanillas  },
+          { label: "🃏 Mis jugadas",    fn: onProfile    },
+          { label: "❓ Ayuda",          fn: onHowItWorks },
+        ].map(({ label, fn }) => (
           <button
             key={label}
             onClick={fn}
@@ -78,18 +63,15 @@ export function Header({ currentUser, onLogout, onProfile, onLobby, onHowItWorks
           </button>
         ))}
       </nav>
-
+ 
       {/* Usuario y créditos */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
+            display: "flex", alignItems: "center", gap: 6,
             background: "rgba(255,215,0,.1)",
             border: "1px solid rgba(255,215,0,.3)",
-            borderRadius: 20,
-            padding: "4px 12px",
+            borderRadius: 20, padding: "4px 12px",
           }}
         >
           <span style={{ color: YELLOW, fontWeight: 700, fontSize: 15 }}>
@@ -97,27 +79,26 @@ export function Header({ currentUser, onLogout, onProfile, onLobby, onHowItWorks
           </span>
           <span style={{ color: "rgba(255,255,255,.4)", fontSize: 12 }}>cr.</span>
         </div>
+ 
         <div
           style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer" }}
           onClick={onProfile}
         >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: "50%",
-              background: "rgba(255,215,0,.12)",
-              border: "1px solid rgba(255,215,0,.3)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 16,
-            }}
-          >
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: "rgba(255,215,0,.12)",
+            border: "1px solid rgba(255,215,0,.3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 16,
+          }}>
             {currentUser.avatar}
           </div>
-          <span style={{ color: "rgba(255,255,255,.7)", fontSize: 13 }}>{currentUser.name}</span>
+          <div>
+            <div style={{ color: "rgba(255,255,255,.7)", fontSize: 13, lineHeight: 1 }}>{currentUser.name}</div>
+            <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10 }}>Jugador</div>
+          </div>
         </div>
+ 
         <button
           onClick={onLogout}
           style={{
