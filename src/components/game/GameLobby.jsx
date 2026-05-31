@@ -44,6 +44,7 @@ export function GameLobby({
         onLobby={() => {}}
         onHowItWorks={onHowItWorks}
         onCortitos={onCortitos}
+        onPlanillas={onPlanillas}
       />
 
       <main
@@ -143,24 +144,6 @@ export function GameLobby({
             }}
           >
             🎰 Cortitos
-          </button>
-
-          {/* Botón Sorteos / Planillas */}
-          <button
-            onClick={onPlanillas}
-            style={{
-              background: "rgba(124,77,255,.08)",
-              border: "1px solid rgba(124,77,255,.3)",
-              color: "#A07BFF",
-              borderRadius: 8,
-              padding: "10px 18px",
-              cursor: "pointer",
-              fontSize: 13,
-              fontFamily: "'Barlow Condensed', sans-serif",
-              letterSpacing: 0.5,
-            }}
-          >
-            ⭐ Sorteos
           </button>
 
           {/* Botón Admin (solo para administradores) */}

@@ -598,7 +598,7 @@ function SlotModal({ cortito, currentUser, onConfirm, onClose }) {
 // ─── CortitosView ─────────────────────────────────────────────────────────────
 export function CortitosView({
   currentUser, db, updateDB,
-  onBack, onLogout, onProfile, onLobby, onHowItWorks, onCortitos,
+  onBack, onLogout, onProfile, onLobby, onHowItWorks, onCortitos, onPlanillas,
 }) {
   const cortitos = db.cortitos || CORTITOS_INIT;
  
@@ -655,6 +655,7 @@ export function CortitosView({
       <Header
         currentUser={currentUser} onLogout={onLogout} onProfile={onProfile}
         onLobby={onLobby} onHowItWorks={onHowItWorks} onCortitos={onCortitos || (() => {})}
+        onPlanillas={onPlanillas || (() => {})}
       />
  
       {joinTarget && (
