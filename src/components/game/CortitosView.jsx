@@ -1,8 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { COLORS, BALL_COLORS, CORTITOS_INIT } from "../../utils/constants";
 import { Header } from "../common/Header";
- 
+
 const { YELLOW, YELLOW2, BG } = COLORS;
+
+function useIsMobile() {
+  const [m, setM] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setM(window.innerWidth < 768);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return m;
+}
  
 // ─── Helper ───────────────────────────────────────────────────────────────────
 const bColor = (n) => BALL_COLORS[(n - 1) % BALL_COLORS.length];
@@ -598,114 +608,110 @@ function SlotModal({ cortito, currentUser, onConfirm, onClose }) {
 // ─── CortitosView ─────────────────────────────────────────────────────────────
 export function CortitosView({
   currentUser, db, updateDB,
-  onBack, onLogout, onProfile, onLobby, onHowItWorks, onCortitos, onPlanillas,
+  onBack, onLogout, onProfile, onLobby, onHowItWorks, onCortitos, onPlanillas, onSupervisor,
 }) {
   const cortitos = db.cortitos || CORTITOS_INIT;
+  const isMobile = useIsMobile();
+  const [selectedId, setSelectedId]     = useState(cortitos[0]?.id || null);
+  const [joinTarget, setJoinTarget]     = useState(null);
+  const [mobileScreen, setMobileScreen] = useState("list");
  
-  const [selectedId, setSelectedId] = useState(cortitos[0]?.id || null);
-  const [joinTarget, setJoinTarget] = useState(null);
- 
-  // ── Unirse a una planilla (multi-slot) ────────────────────────────────────────
   const handleConfirmJoin = (slotNumbers) => {
     if (!joinTarget || !slotNumbers?.length) return;
-
     updateDB(prev => {
       const cortito = prev.cortitos.find(c => c.id === joinTarget.id);
       if (!cortito) return prev;
-
-      // Solo slots realmente libres
-      const validSlots = slotNumbers.filter(
-        sn => !cortito.players.some(p => p.slotNumber === sn)
-      );
+      const validSlots = slotNumbers.filter(sn => !cortito.players.some(p => p.slotNumber === sn));
       if (!validSlots.length) return prev;
-
       const totalCost = validSlots.length * cortito.costPerSlot;
       const user = prev.users.find(u => u.id === currentUser.id);
       if (!user || user.credits < totalCost) return prev;
-
-      const newPlayers = validSlots.map(sn => ({
-        userId:     currentUser.id,
-        userName:   currentUser.name,
-        avatar:     currentUser.avatar,
-        slotNumber: sn,
-      }));
-
       return {
         ...prev,
-        users: prev.users.map(u =>
-          u.id === currentUser.id
-            ? { ...u, credits: u.credits - totalCost }
-            : u
-        ),
-        cortitos: prev.cortitos.map(c =>
-          c.id === cortito.id
-            ? { ...c, players: [...c.players, ...newPlayers] }
-            : c
-        ),
+        users: prev.users.map(u => u.id === currentUser.id ? { ...u, credits: u.credits - totalCost } : u),
+        cortitos: prev.cortitos.map(c => c.id === cortito.id
+          ? { ...c, players: [...c.players, ...slotNumbers.filter(sn => !cortito.players.some(p => p.slotNumber===sn)).map(sn => ({ userId:currentUser.id, userName:currentUser.name, avatar:currentUser.avatar, slotNumber:sn }))] }
+          : c),
       };
     });
-
     setJoinTarget(null);
   };
  
   const activeCortito = cortitos.find(c => c.id === selectedId) || cortitos[0];
+  const hp = { currentUser, onLogout, onProfile, onLobby, onHowItWorks,
+    onCortitos: onCortitos||(() => {}), onPlanillas: onPlanillas||(() => {}), onSupervisor };
+ 
+  if (isMobile) {
+    if (mobileScreen === "list") return (
+      <div style={{ minHeight:"100vh", background:BG, fontFamily:"'Barlow Condensed',sans-serif" }}>
+        <Header {...hp} />
+        {joinTarget && <SlotModal cortito={joinTarget} currentUser={currentUser} onConfirm={handleConfirmJoin} onClose={() => setJoinTarget(null)} />}
+        <main style={{ padding:"16px 12px 28px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18 }}>
+            <button onClick={onBack} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 14px", color:"rgba(255,255,255,.5)", cursor:"pointer", fontSize:13 }}>← Volver</button>
+            <div>
+              <h1 style={{ fontFamily:"'Cinzel',serif", fontSize:20, fontWeight:900, color:"#fff", margin:0 }}>⚡ Cortitos</h1>
+              <p style={{ color:"rgba(255,255,255,.3)", fontSize:12, margin:"2px 0 0" }}>Tocá uno para jugar</p>
+            </div>
+          </div>
+          {cortitos.map(c => (
+            <PlanillaCard key={c.id} cortito={c} currentUser={currentUser}
+              onJoinClick={() => setJoinTarget(c)}
+              isSelected={false}
+              onSelect={id => { setSelectedId(id); setMobileScreen("detail"); }} />
+          ))}
+        </main>
+      </div>
+    );
+ 
+    return (
+      <div style={{ minHeight:"100vh", background:BG, fontFamily:"'Barlow Condensed',sans-serif" }}>
+        <Header {...hp} />
+        {joinTarget && <SlotModal cortito={joinTarget} currentUser={currentUser} onConfirm={handleConfirmJoin} onClose={() => setJoinTarget(null)} />}
+        <main style={{ padding:"12px 12px 28px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+            <button onClick={() => setMobileScreen("list")} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 14px", color:"rgba(255,255,255,.5)", cursor:"pointer", fontSize:13, whiteSpace:"nowrap" }}>← Cortitos</button>
+            <div style={{ flex:1 }}>
+              <div style={{ color:"#fff", fontWeight:700, fontSize:16, fontFamily:"'Cinzel',serif" }}>{activeCortito?.name}</div>
+              <div style={{ color:"rgba(255,255,255,.35)", fontSize:12 }}>{activeCortito?.description}</div>
+            </div>
+          </div>
+          <PlanillaCard cortito={activeCortito} currentUser={currentUser}
+            onJoinClick={() => setJoinTarget(activeCortito)}
+            isSelected={true} onSelect={() => {}} />
+          <div style={{ marginTop:14 }}>
+            <BolilleroPanel cortito={activeCortito} />
+          </div>
+        </main>
+      </div>
+    );
+  }
  
   return (
     <div style={{ minHeight:"100vh", background:BG, fontFamily:"'Barlow Condensed',sans-serif" }}>
-      <Header
-        currentUser={currentUser} onLogout={onLogout} onProfile={onProfile}
-        onLobby={onLobby} onHowItWorks={onHowItWorks} onCortitos={onCortitos || (() => {})}
-        onPlanillas={onPlanillas || (() => {})}
-      />
- 
-      {joinTarget && (
-        <SlotModal
-          cortito={joinTarget}
-          currentUser={currentUser}
-          onConfirm={handleConfirmJoin}
-          onClose={() => setJoinTarget(null)}
-        />
-      )}
- 
+      <Header {...hp} />
+      {joinTarget && <SlotModal cortito={joinTarget} currentUser={currentUser} onConfirm={handleConfirmJoin} onClose={() => setJoinTarget(null)} />}
       <main style={{ maxWidth:1120, margin:"0 auto", padding:"28px 22px" }}>
         <div style={{ marginBottom:20 }}>
-          <h1 style={{ fontFamily:"'Cinzel',serif", fontSize:28, fontWeight:900, color:"#fff",
-            marginBottom:6, display:"flex", alignItems:"center", gap:10 }}>
-            <span style={{ fontSize:24 }}>⚡</span> Cortitos
-          </h1>
+          <h1 style={{ fontFamily:"'Cinzel',serif", fontSize:28, fontWeight:900, color:"#fff", marginBottom:6 }}>⚡ Cortitos</h1>
           <p style={{ color:"rgba(255,255,255,.35)", fontSize:13, maxWidth:540, lineHeight:1.65 }}>
-            Completá una de las {cortitos.length} planillas. Cuando se llenan todos los slots,
-            el bolillero se ejecuta automáticamente. El primero en completar{" "}
-            {cortitos[0]?.casillerosToWin} casilleros gana el pozo completo.
+            Completá una de las {cortitos.length} planillas. Cuando se llenan todos los slots el bolillero se ejecuta automáticamente.
           </p>
         </div>
- 
         <div style={{ display:"grid", gridTemplateColumns:"1.1fr 1fr", gap:22, alignItems:"start" }}>
           <div>
             {cortitos.map(c => (
-              <PlanillaCard
-                key={c.id}
-                cortito={c}
-                currentUser={currentUser}
+              <PlanillaCard key={c.id} cortito={c} currentUser={currentUser}
                 onJoinClick={() => setJoinTarget(c)}
-                isSelected={selectedId === c.id}
-                onSelect={setSelectedId}
-              />
+                isSelected={selectedId === c.id} onSelect={setSelectedId} />
             ))}
           </div>
           <div style={{ position:"sticky", top:78 }}>
             <BolilleroPanel cortito={activeCortito} />
           </div>
         </div>
- 
-        <p style={{ color:"rgba(255,255,255,.18)", fontSize:12, textAlign:"center",
-          marginTop:24, lineHeight:1.7, padding:"11px 16px", borderRadius:8,
-          background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.04)" }}>
-          ℹ Cuando una planilla alcanza {cortitos[0]?.totalSlots}/{cortitos[0]?.totalSlots},
-          el bolillero se ejecuta automáticamente hasta que un jugador completa sus{" "}
-          {cortitos[0]?.casillerosToWin} casilleros y se define al ganador.
-        </p>
       </main>
     </div>
   );
 }
+ 
