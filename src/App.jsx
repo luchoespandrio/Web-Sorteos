@@ -13,6 +13,7 @@ import { HowItWorksView } from "./components/game/HowItWorksView";
 import { CortitosView } from "./components/game/CortitosView";
 import { PlanillasView } from "./components/game/PlanillasView";
 import { SupervisorPanel } from "./components/admin/SupervisorPanel";
+import { StreamView } from "./components/game/StreamView";
 import { AdminPanel } from "./components/admin/AdminPanel";
 import { RequestCreditModal } from "./components/profile/RequestCreditModal";
 // ── NUEVO ──────────────────────────────────────────────────────────────────────
@@ -23,7 +24,7 @@ import { COLORS } from "./utils/constants";
 const { YELLOW, YELLOW2 } = COLORS;
  
 export default function RifasReal() {
-  const { db, updateDB } = useDB();
+  const { db, updateDB, triggerManualDraw, setDrawMode, loading, error } = useDB();
  
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState("ageVerification");
@@ -37,6 +38,7 @@ export default function RifasReal() {
  
   // ── NUEVO: estado del bolillero manual ────────────────────────────────────
   const [bolilleroRifa, setBolilleroRifa] = useState(null);
+  const [streamMode, setStreamMode]       = useState(false);
   // ──────────────────────────────────────────────────────────────────────────
  
   // Mantener currentUser sincronizado con la DB
@@ -60,7 +62,9 @@ export default function RifasReal() {
     );
     if (user) {
       setCurrentUser(user);
-      if (user.role === "admin" || user.isAdmin) setView("admin"); else if (user.role === "supervisor") setView("supervisor"); else setView("lobby");
+      if (user.role === "admin" || user.isAdmin) setView("admin");
+      else if (user.role === "supervisor") setView("supervisor");
+      else setView("lobby");
       setLoginError("");
     } else {
       setLoginError("Usuario o contraseña incorrectos");
@@ -189,6 +193,33 @@ export default function RifasReal() {
     onSupervisor: () => setView("supervisor"),
   };
  
+  // Stream mode: reemplaza toda la UI
+  if (streamMode && db) return (
+    <StreamView
+      db={db} updateDB={updateDB}
+      triggerManualDraw={triggerManualDraw}
+      currentUser={currentUser}
+      onExit={() => setStreamMode(false)}
+    />
+  );
+ 
+  if (loading) return (
+    <div style={{ minHeight:"100vh", background:"#040408", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", fontFamily:"'Barlow Condensed',sans-serif",
+      gap:16 }}>
+      <style>{`@keyframes spinCrown{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ fontSize:52, animation:"spinCrown 1.5s linear infinite",
+        filter:"drop-shadow(0 0 16px rgba(255,215,0,.5))" }}>👑</div>
+      <div style={{ fontFamily:"'Cinzel',serif", color:"rgba(255,215,0,.7)", fontSize:16,
+        letterSpacing:4, textTransform:"uppercase" }}>Conectando...</div>
+      {error && <div style={{ color:"#FF5252", fontSize:12, maxWidth:300, textAlign:"center" }}>
+        ⚠ Error: {error}. Verificá la configuración de Firebase.
+      </div>}
+    </div>
+  );
+ 
+  if (!db) return null;
+ 
   return (
     <>
       <Toast notif={notif} />
@@ -275,7 +306,7 @@ export default function RifasReal() {
         <ProfileView
           currentUser={currentUser}
           rifas={db.rifas}
-          creditRequests={db.creditRequests} cortitos={db.cortitos} planillas={db.planillas}
+          creditRequests={db.creditRequests}
           onBack={() => setView("lobby")}
           {...commonHeaderProps}
           onRequestCredit={() => setShowReqCredit(true)}
@@ -317,6 +348,9 @@ export default function RifasReal() {
           onLogout={handleLogout}
           onLobby={() => setView("lobby")}
           toast={toast}
+          triggerManualDraw={triggerManualDraw}
+          setDrawMode={setDrawMode}
+          onStreamMode={() => setStreamMode(true)}
         />
       )}
  

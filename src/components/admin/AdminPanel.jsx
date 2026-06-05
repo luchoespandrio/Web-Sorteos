@@ -15,7 +15,7 @@ const CORTITOS_INIT_LOCAL = [
     players:[], status:"open", seq:[], winner:null },
 ];
  
-export function AdminPanel({ db, setDb, onLogout, onLobby, toast }) {
+export function AdminPanel({ db, setDb, onLogout, onLobby, toast, triggerManualDraw, setDrawMode, onStreamMode }) {
   const { users, rifas, creditRequests, cortitos = CORTITOS_INIT_LOCAL, planillas = PLANILLAS_INIT } = db;
  
   const [tab, setTab] = useState("rifas");
@@ -215,6 +215,7 @@ export function AdminPanel({ db, setDb, onLogout, onLobby, toast }) {
         </div>
         <div style={{ display:"flex", gap:10 }}>
           <button onClick={onLobby} style={{ ...btnStyle, background:"rgba(255,215,0,.07)", border:"1px solid rgba(255,215,0,.22)", color:YELLOW }}>← Volver</button>
+          {onStreamMode && <button onClick={onStreamMode} style={{ ...btnStyle, background:"rgba(255,50,50,.1)", border:"1px solid rgba(255,50,50,.35)", color:"#FF5252", fontWeight:700 }}>🔴 MODO STREAM</button>}
           <button onClick={onLogout} style={{ ...btnStyle, background:"transparent", border:"1px solid rgba(255,100,100,.28)", color:"#FF6464" }}>Salir</button>
         </div>
       </header>
@@ -227,7 +228,7 @@ export function AdminPanel({ db, setDb, onLogout, onLobby, toast }) {
             { label:"Jugadores",      val:users.filter(u=>!u.isAdmin).length,      icon:"👥", c:"#4ECDC4" },
             { label:"Rifas activas",  val:rifas.filter(r=>r.status==="active").length, icon:"🎫", c:YELLOW },
             { label:"Cortitos activos",val:cortitos.filter(c=>c.status==="open").length,icon:"⚡",c:"#FF8C00"},
-            { label:"Sorteos abiertos",val:(planillas||[]).filter(p=>p.status==="open").length,icon:"⭐",c:PURPLE_L},
+            { label:"Planillas abiertas",val:(planillas||[]).filter(p=>p.status==="open").length,icon:"⭐",c:PURPLE_L},
             { label:"Créditos emitidos",val:totalCredits.toLocaleString(),          icon:"💰", c:"#00C853" },
           ].map(s=>(
             <div key={s.label} style={{ background:"#0d0d14", border:`1px solid ${s.c}22`, borderRadius:10, padding:"14px 18px", display:"flex", alignItems:"center", gap:12 }}>
@@ -247,7 +248,8 @@ export function AdminPanel({ db, setDb, onLogout, onLobby, toast }) {
             ["users","👥 Usuarios"],
             ["rifas","🎫 Rifas"],
             ["cortitos","⚡ Cortitos"],
-            ["planillas","⭐ Sorteos"],
+            ["planillas","🎰 Planillas"],
+            ["permisos","🔐 Permisos"],
           ].map(([val,label])=>(
             <button key={val} onClick={()=>setTab(val)} style={{
               padding:"7px 18px", borderRadius:7, fontSize:12, cursor:"pointer",
@@ -471,7 +473,7 @@ export function AdminPanel({ db, setDb, onLogout, onLobby, toast }) {
           </div>
         )}
  
-        {/* ── TAB: Planillas / Sorteos ── */}
+        {/* ── TAB: Planillas ── */}
         {tab==="planillas"&&(
           <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
             {/* Formulario crear */}
@@ -546,13 +548,97 @@ export function AdminPanel({ db, setDb, onLogout, onLobby, toast }) {
                     {/* Acciones */}
                     <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                       {p.status==="open"&&<button onClick={()=>setEditPlanilla({...p,prices:{...p.prices}})} style={{ ...btnStyle, background:"rgba(124,77,255,.07)", border:`1px solid ${PURPLE}44`, color:PURPLE_L }}>✏ Editar</button>}
-                      <button onClick={()=>setResetConfirm({type:"planilla",id:p.id})} style={{ ...btnStyle, background:"rgba(0,200,83,.07)", border:"1px solid rgba(0,200,83,.2)", color:"#00C853" }}>🔄 Reiniciar</button>
+                      <button onClick={()=>setDrawMode&&setDrawMode(p.id, p.drawMode==="manual"?"auto":"manual")} style={{ ...btnStyle,
+              background: p.drawMode==="manual"?"rgba(255,140,0,.1)":"rgba(78,205,196,.07)",
+              border:`1px solid ${p.drawMode==="manual"?"rgba(255,140,0,.4)":"rgba(78,205,196,.3)"}`,
+              color: p.drawMode==="manual"?"#FF8C00":"#4ECDC4" }}>
+              {p.drawMode==="manual"?"🔧 Manual":"⚡ Auto"}
+            </button>
+            {p.status==="readyManual" && (
+              <button onClick={()=>triggerManualDraw&&triggerManualDraw(p.id)} style={{ ...btnStyle,
+                background:`linear-gradient(135deg,${YELLOW2},${YELLOW})`,
+                border:"none", color:"#000", fontWeight:700, fontFamily:"'Cinzel',serif" }}>
+                ▶ Iniciar Sorteo
+              </button>
+            )}
+            <button onClick={()=>setResetConfirm({type:"planilla",id:p.id})} style={{ ...btnStyle, background:"rgba(0,200,83,.07)", border:"1px solid rgba(0,200,83,.2)", color:"#00C853" }}>🔄 Reiniciar</button>
                       <button onClick={()=>setDeleteConfirm({type:"planilla",id:p.id})} style={{ ...btnStyle, background:"rgba(255,50,50,.07)", border:"1px solid rgba(255,50,50,.2)", color:"#FF6464" }}>🗑 Eliminar</button>
                     </div>
                   </div>
                 </div>
               );
             })}
+          </div>
+        )}
+ 
+        {/* ── TAB: Permisos ── */}
+        {tab==="permisos"&&(
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ background:"#0d0d14", border:`1px solid rgba(255,255,255,.07)`, borderRadius:12, padding:"18px", marginBottom:4 }}>
+              <h3 style={{ color:"#fff", fontSize:14, fontFamily:"'Cinzel',serif", marginBottom:6 }}>🔐 Permisos de usuarios</h3>
+              <p style={{ color:"rgba(255,255,255,.3)", fontSize:12, marginBottom:0 }}>
+                Asigná el rol y los permisos de cada usuario. Los supervisores acceden a su propio panel según lo que les habilitás acá.
+              </p>
+            </div>
+            {users.filter(u=>u.role!=="admin").map(u=>(
+              <div key={u.id} style={{ background:"#0d0d14", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"16px 18px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14, flexWrap:"wrap" }}>
+                  <span style={{ fontSize:22 }}>{u.avatar}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ color:"#fff", fontWeight:700, fontSize:14 }}>{u.name}</div>
+                    <div style={{ color:"rgba(255,255,255,.35)", fontSize:12 }}>@{u.username}</div>
+                  </div>
+                  {/* Selector de rol */}
+                  <div style={{ display:"flex", gap:6 }}>
+                    {["player","supervisor"].map(r=>(
+                      <button key={r} onClick={()=>setDb(prev=>({...prev,users:prev.users.map(x=>x.id===u.id?{...x,role:r,isAdmin:false}:x)}))}
+                        style={{ padding:"5px 12px", borderRadius:7, fontSize:11, fontWeight:700, cursor:"pointer",
+                          background: u.role===r ? (r==="supervisor"?"rgba(124,77,255,.15)":"rgba(78,205,196,.1)") : "rgba(255,255,255,.03)",
+                          border:`1px solid ${u.role===r?(r==="supervisor"?"rgba(124,77,255,.5)":"rgba(78,205,196,.4)"):"rgba(255,255,255,.08)"}`,
+                          color: u.role===r ? (r==="supervisor"?"#A07BFF":"#4ECDC4") : "rgba(255,255,255,.3)",
+                          textTransform:"capitalize" }}>
+                        {r==="player"?"Jugador":"Supervisor"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Permisos (solo si es supervisor) */}
+                {u.role==="supervisor" && (
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8, paddingTop:12, borderTop:"1px solid rgba(255,255,255,.06)" }}>
+                    {[
+                      {key:"canGiveCredits",    label:"💰 Dar créditos",       desc:"Acreditar saldo directamente"},
+                      {key:"canApproveCredits", label:"📋 Aprobar solicitudes", desc:"Gestionar pedidos de crédito"},
+                      {key:"canCreateUsers",    label:"👥 Crear usuarios",      desc:"Dar de alta jugadores"},
+                      {key:"canManageGames",    label:"🎮 Gestionar juegos",    desc:"Reiniciar cortitos y planillas"},
+                    ].map(({key,label,desc})=>{
+                      const on = u.permissions?.[key]||false;
+                      return (
+                        <button key={key}
+                          onClick={()=>setDb(prev=>({...prev,users:prev.users.map(x=>x.id===u.id?{...x,permissions:{...(x.permissions||{}), [key]:!on}}:x)}))}
+                          style={{ padding:"10px 12px", borderRadius:9, cursor:"pointer", textAlign:"left",
+                            background: on ? "rgba(0,200,83,.08)" : "rgba(255,255,255,.02)",
+                            border:`1px solid ${on?"rgba(0,200,83,.3)":"rgba(255,255,255,.07)"}`,
+                          }}>
+                          <div style={{ color: on?"#00C853":"rgba(255,255,255,.4)", fontWeight:700, fontSize:13 }}>{label}</div>
+                          <div style={{ color:"rgba(255,255,255,.25)", fontSize:11, marginTop:2 }}>{desc}</div>
+                          <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:6 }}>
+                            <div style={{ width:28, height:14, borderRadius:7, background: on?"#00C853":"rgba(255,255,255,.1)", position:"relative", transition:"background .2s" }}>
+                              <div style={{ width:10, height:10, borderRadius:"50%", background:"#fff", position:"absolute", top:2, left: on?16:2, transition:"left .2s" }}/>
+                            </div>
+                            <span style={{ color: on?"#00C853":"rgba(255,255,255,.25)", fontSize:11 }}>{on?"Habilitado":"Deshabilitado"}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {u.role==="player" && (
+                  <div style={{ color:"rgba(255,255,255,.2)", fontSize:12, paddingTop:8, borderTop:"1px solid rgba(255,255,255,.04)" }}>
+                    Sin permisos especiales · Cambiar a Supervisor para asignar accesos
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
  

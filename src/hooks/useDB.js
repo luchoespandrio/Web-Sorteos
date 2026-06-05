@@ -1,36 +1,56 @@
-import { useState, useCallback, useRef } from "react";
-import { DB_KEY, USERS_INIT, RIFAS_INIT, CORTITOS_INIT, PLANILLAS_INIT } from "../utils/constants";
+import { useState, useCallback } from "react";
+import { USERS_INIT, RIFAS_INIT, CORTITOS_INIT, PLANILLAS_INIT } from "../utils/constants";
  
-const NO_PERMS = { canGiveCredits:false, canApproveCredits:false, canCreateUsers:false, canManageGames:false };
+const DB_KEY = "rifasreal_db_v1";
  
-function runDraw(cortito) {
+// ─── Estado inicial ───────────────────────────────────────────────────────────
+function getInitialDB() {
+  try {
+    const saved = localStorage.getItem(DB_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch (e) {}
+  return {
+    users:          USERS_INIT,
+    rifas:          RIFAS_INIT,
+    cortitos:       CORTITOS_INIT,
+    planillas:      PLANILLAS_INIT.map(p => ({ ...p, drawMode: p.drawMode || "auto" })),
+    creditRequests: [],
+  };
+}
+ 
+function saveDB(db) {
+  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch (e) {}
+}
+ 
+// ─── Sorteo Cortitos ──────────────────────────────────────────────────────────
+function runCortitosDraw(cortito) {
   const { players, bolMin, bolMax, casillerosToWin, totalSlots } = cortito;
-  const counters = {};
-  players.forEach(p => { counters[p.slotNumber] = 0; });
+  const cnt = {};
+  players.forEach(p => { cnt[p.slotNumber] = 0; });
   const seq = []; let winner = null; let safety = 500;
   while (!winner && safety-- > 0) {
     const n = Math.floor(Math.random() * (bolMax - bolMin + 1)) + bolMin;
     seq.push(n);
-    if (n >= 1 && n <= totalSlots && counters[n] !== undefined) {
-      counters[n]++;
-      if (counters[n] >= casillerosToWin) {
+    if (n >= 1 && n <= totalSlots && cnt[n] !== undefined) {
+      cnt[n]++;
+      if (cnt[n] >= casillerosToWin)
         winner = { slotNumber: n, player: players.find(p => p.slotNumber === n) || null };
-      }
     }
   }
   return { seq, winner };
 }
  
+// ─── Sorteo Planillas ─────────────────────────────────────────────────────────
 function runPlanillaDraw(planilla) {
   const { totalNumbers, timesOut } = planilla;
-  const counters = {};
-  for (let i = 1; i <= totalNumbers; i++) counters[i] = 0;
+  const cnt = {};
+  for (let i = 1; i <= totalNumbers; i++) cnt[i] = 0;
   const seq = []; let winner = null; let safety = 5000;
   while (!winner && safety-- > 0) {
     const n = Math.floor(Math.random() * totalNumbers) + 1;
     seq.push(n);
-    counters[n]++;
-    if (counters[n] >= timesOut) {
+    cnt[n]++;
+    if (cnt[n] >= timesOut) {
       winner = { number: n, slots: planilla.numbers?.[String(n)] || [null,null,null,null] };
       break;
     }
@@ -38,103 +58,164 @@ function runPlanillaDraw(planilla) {
   return { seq, winner };
 }
  
-const CURRENT_DB_KEY = DB_KEY + "_v4"; // bumped → fuerza reset con nuevos roles
+// ─── Comprobación planilla llena ──────────────────────────────────────────────
+function isPlanillaFull(p) {
+  for (let n = 1; n <= p.totalNumbers; n++) {
+    const slots = p.numbers?.[String(n)] || [];
+    if (slots.length < 4 || slots.some(s => !s)) return false;
+  }
+  return true;
+}
  
+// ─── Hook principal ───────────────────────────────────────────────────────────
 export function useDB() {
-  const [db, setDb] = useState(() => {
-    try {
-      const raw = localStorage.getItem(CURRENT_DB_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        let dirty = false;
+  const [db, setDb] = useState(() => getInitialDB());
  
-        // Migración: role + permissions en usuarios existentes
-        if (parsed.users?.some(u => !u.role || !u.permissions)) {
-          parsed.users = parsed.users.map(u => ({
-            ...u,
-            role: u.role || (u.isAdmin ? "admin" : "player"),
-            permissions: u.permissions || NO_PERMS,
-          }));
-          dirty = true;
-        }
-        // Migración: agregar planillas si no existen
-        if (!parsed.planillas) { parsed.planillas = PLANILLAS_INIT; dirty = true; }
-        // Recuperar estados "running" trabados
-        if (parsed.cortitos?.some(c => c.status === "running")) {
-          parsed.cortitos = parsed.cortitos.map(c => c.status === "running" ? { ...c, status:"open" } : c);
-          dirty = true;
-        }
-        if (parsed.planillas?.some(p => p.status === "running")) {
-          parsed.planillas = parsed.planillas.map(p => p.status === "running" ? { ...p, status:"open" } : p);
-          dirty = true;
-        }
-        if (dirty) localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(parsed));
-        return parsed;
-      }
-    } catch(e) { console.error("Error cargando DB:", e); }
- 
-    const initial = { users:USERS_INIT, rifas:RIFAS_INIT, creditRequests:[], cortitos:CORTITOS_INIT, planillas:PLANILLAS_INIT };
-    localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(initial));
-    return initial;
-  });
- 
-  const saveDB = newDb => { try { localStorage.setItem(CURRENT_DB_KEY, JSON.stringify(newDb)); } catch(e) { console.error(e); } };
-  const processingRef = useRef(new Set());
- 
-  const checkAndRunDraws = useCallback(currentDb => {
-    // Cortitos
-    const rc = currentDb.cortitos?.find(c =>
-      c.players.length === c.totalSlots && c.status === "open" && !processingRef.current.has(`c-${c.id}`)
-    );
-    if (rc) {
-      processingRef.current.add(`c-${rc.id}`);
-      setDb(prev => { const n = {...prev, cortitos:prev.cortitos.map(c => c.id===rc.id?{...c,status:"running"}:c)}; saveDB(n); return n; });
-      setTimeout(() => {
-        const prize = rc.costPerSlot * rc.totalSlots;
-        const { seq, winner } = runDraw(rc);
-        setDb(prev => {
-          const n = { ...prev,
-            users: winner?.player ? prev.users.map(u => u.id===winner.player.userId?{...u,credits:u.credits+prize}:u) : prev.users,
-            cortitos: prev.cortitos.map(c => c.id===rc.id?{...c,seq,winner,status:"finished"}:c),
-          };
-          saveDB(n); return n;
-        });
-        processingRef.current.delete(`c-${rc.id}`);
-      }, 1500);
-    }
-    // Planillas
-    const rp = currentDb.planillas?.find(p => {
-      if (p.status !== "open" || processingRef.current.has(`p-${p.id}`)) return false;
-      for (let n = 1; n <= p.totalNumbers; n++) {
-        const slots = p.numbers?.[String(n)] || [];
-        if (slots.length < 4 || slots.some(s => !s)) return false;
-      }
-      return true;
+  // Actualiza estado + localStorage
+  const updateDB = useCallback(fn => {
+    setDb(prev => {
+      const next = fn(prev);
+      saveDB(next);
+      // Chequear sorteos automáticos después de actualizar
+      checkDraws(next, setDb);
+      return next;
     });
-    if (rp) {
-      processingRef.current.add(`p-${rp.id}`);
-      setDb(prev => { const n = {...prev, planillas:prev.planillas.map(p => p.id===rp.id?{...p,status:"running"}:p)}; saveDB(n); return n; });
-      setTimeout(() => {
-        const prizeQ = Math.floor(rp.prize / 4);
-        const { seq, winner } = runPlanillaDraw(rp);
-        setDb(prev => {
-          const owners = winner?.slots?.filter(Boolean) || [];
-          const map = {};
-          owners.forEach(s => { map[s.userId] = (map[s.userId]||0) + prizeQ; });
-          const n = { ...prev,
-            users: prev.users.map(u => map[u.id] ? {...u,credits:u.credits+map[u.id]} : u),
-            planillas: prev.planillas.map(p => p.id===rp.id?{...p,seq,winner,status:"finished"}:p),
-          };
-          saveDB(n); return n;
-        });
-        processingRef.current.delete(`p-${rp.id}`);
-      }, 2000);
-    }
   }, []);
  
-  const updateDB = useCallback(fn => {
-    setDb(prev => { const next = fn(prev); saveDB(next); checkAndRunDraws(next); return next; });
-  }, [checkAndRunDraws]);
+  // ─── Disparo manual de sorteo ───────────────────────────────────────────
+  const triggerManualDraw = useCallback(planillaId => {
+    setDb(prev => {
+      const planilla = prev.planillas.find(p => p.id === planillaId);
+      if (!planilla || (planilla.status !== "open" && planilla.status !== "readyManual")) return prev;
  
-  return { db, updateDB };
+      // Marcar running
+      const running = {
+        ...prev,
+        planillas: prev.planillas.map(p =>
+          p.id === planillaId ? { ...p, status: "running" } : p
+        ),
+      };
+      saveDB(running);
+ 
+      // Ejecutar sorteo con delay
+      setTimeout(() => {
+        setDb(cur => {
+          const p = cur.planillas.find(x => x.id === planillaId);
+          if (!p) return cur;
+          const prizeQ = Math.floor(p.prize / 4);
+          const { seq, winner } = runPlanillaDraw(p);
+          const owners = winner?.slots?.filter(Boolean) || [];
+          const map = {};
+          owners.forEach(s => { map[s.userId] = (map[s.userId] || 0) + prizeQ; });
+          const next = {
+            ...cur,
+            users:     cur.users.map(u => map[u.id] ? { ...u, credits: u.credits + map[u.id] } : u),
+            planillas: cur.planillas.map(x =>
+              x.id === planillaId ? { ...x, seq, winner, status: "finished" } : x
+            ),
+          };
+          saveDB(next);
+          return next;
+        });
+      }, 2000);
+ 
+      return running;
+    });
+  }, []);
+ 
+  // ─── Cambiar modo de sorteo ─────────────────────────────────────────────
+  const setDrawMode = useCallback((planillaId, mode) => {
+    setDb(prev => {
+      const next = {
+        ...prev,
+        planillas: prev.planillas.map(p =>
+          p.id === planillaId ? { ...p, drawMode: mode } : p
+        ),
+      };
+      saveDB(next);
+      return next;
+    });
+  }, []);
+ 
+  return { db, updateDB, triggerManualDraw, setDrawMode, loading: false, error: null };
 }
+ 
+// ─── Sorteos automáticos (fuera del hook para evitar stale closures) ──────────
+function checkDraws(db, setDb) {
+  // Cortito listo
+  const rc = db.cortitos?.find(c =>
+    c.players.length === c.totalSlots && c.status === "open"
+  );
+  if (rc) {
+    // Marcar running
+    const withRunning = {
+      ...db,
+      cortitos: db.cortitos.map(c => c.id === rc.id ? { ...c, status: "running" } : c),
+    };
+    saveDB(withRunning);
+ 
+    setTimeout(() => {
+      setDb(cur => {
+        const cortito = cur.cortitos.find(c => c.id === rc.id);
+        if (!cortito || cortito.status !== "running") return cur;
+        const prize = cortito.costPerSlot * cortito.totalSlots;
+        const { seq, winner } = runCortitosDraw(cortito);
+        const next = {
+          ...cur,
+          users: cur.users.map(u =>
+            winner?.player?.userId === u.id ? { ...u, credits: u.credits + prize } : u
+          ),
+          cortitos: cur.cortitos.map(c =>
+            c.id === rc.id ? { ...c, seq, winner, status: "finished" } : c
+          ),
+        };
+        saveDB(next);
+        return next;
+      });
+    }, 1500);
+  }
+ 
+  // Planilla auto lista
+  const rp = db.planillas?.find(p =>
+    p.status === "open" && p.drawMode === "auto" && isPlanillaFull(p)
+  );
+  if (rp) {
+    setTimeout(() => {
+      setDb(cur => {
+        const planilla = cur.planillas.find(p => p.id === rp.id);
+        if (!planilla || planilla.status !== "open") return cur;
+        const prizeQ = Math.floor(planilla.prize / 4);
+        const { seq, winner } = runPlanillaDraw(planilla);
+        const owners = winner?.slots?.filter(Boolean) || [];
+        const map = {};
+        owners.forEach(s => { map[s.userId] = (map[s.userId] || 0) + prizeQ; });
+        const next = {
+          ...cur,
+          users:     cur.users.map(u => map[u.id] ? { ...u, credits: u.credits + map[u.id] } : u),
+          planillas: cur.planillas.map(p =>
+            p.id === rp.id ? { ...p, seq, winner, status: "finished" } : p
+          ),
+        };
+        saveDB(next);
+        return next;
+      });
+    }, 2000);
+  }
+ 
+  // Planilla manual: marcar readyManual
+  db.planillas?.forEach(p => {
+    if (p.status === "open" && p.drawMode === "manual" && isPlanillaFull(p)) {
+      setDb(cur => {
+        const next = {
+          ...cur,
+          planillas: cur.planillas.map(x =>
+            x.id === p.id ? { ...x, status: "readyManual" } : x
+          ),
+        };
+        saveDB(next);
+        return next;
+      });
+    }
+  });
+}
+ 
