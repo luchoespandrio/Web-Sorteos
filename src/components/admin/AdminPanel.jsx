@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { COLORS, PLANILLAS_INIT } from "../../utils/constants";
 import { Roulette } from "../game/Roulette";
  
-const YELLOW  = "#FFD700";
-const YELLOW2 = "#F0B90B";
-const BG      = "#0a0a0f";
+const YELLOW  = "#fbbf24";
+const YELLOW2 = "#f59e0b";
+const BG      = "#0d0b1e";
 const PURPLE  = "#7C4DFF";
 const PURPLE_L= "#A07BFF";
 const FRAC_COLORS = { cuarto: "#7C4DFF", medio: "#00C853", entero: "#C9A84C" };
@@ -16,7 +16,8 @@ const CORTITOS_INIT_LOCAL = [
 ];
  
 export function AdminPanel({ db, setDb, onLogout, onLobby, toast, triggerManualDraw, setDrawMode, onStreamMode }) {
-  const { users, rifas, creditRequests, cortitos = CORTITOS_INIT_LOCAL, planillas = PLANILLAS_INIT } = db;
+  const { users, rifas, creditRequests, cortitos = CORTITOS_INIT_LOCAL, planillas = PLANILLAS_INIT, registrationRequests = [] } = db;
+  const pendingRegs = registrationRequests.filter(r=>r.status==="pending");
  
   const [tab, setTab] = useState("rifas");
  
@@ -250,6 +251,8 @@ export function AdminPanel({ db, setDb, onLogout, onLobby, toast, triggerManualD
             ["cortitos","⚡ Cortitos"],
             ["planillas","🎰 Planillas"],
             ["permisos","🔐 Permisos"],
+            ["registros",`📝 Registros${pendingRegs.length>0?" ("+pendingRegs.length+")":""}`],
+ 
           ].map(([val,label])=>(
             <button key={val} onClick={()=>setTab(val)} style={{
               padding:"7px 18px", borderRadius:7, fontSize:12, cursor:"pointer",
@@ -642,6 +645,60 @@ export function AdminPanel({ db, setDb, onLogout, onLobby, toast, triggerManualD
           </div>
         )}
  
+ 
+        {/* ── TAB: Registros ── */}
+        {tab==="registros"&&(
+          <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
+            <div style={{ background:"#160f35",border:"1px solid rgba(124,58,237,.2)",borderRadius:12,padding:"18px",marginBottom:4 }}>
+              <h3 style={{ color:"#fff",fontSize:14,fontFamily:"'Cinzel',serif",marginBottom:6 }}>📝 Solicitudes de registro</h3>
+              <p style={{ color:"rgba(255,255,255,.3)",fontSize:12 }}>
+                Jugadores que solicitaron crear una cuenta. Aprobá para crear el usuario con 0 créditos.
+              </p>
+            </div>
+            {registrationRequests.length===0?(
+              <div style={{ textAlign:"center",padding:"40px",color:"rgba(255,255,255,.2)",fontSize:14,
+                background:"rgba(124,58,237,.04)",borderRadius:12,border:"1px dashed rgba(124,58,237,.15)" }}>
+                <div style={{ fontSize:36,marginBottom:10 }}>📋</div>
+                Sin solicitudes de registro todavía
+              </div>
+            ):registrationRequests.map(r=>(
+              <div key={r.id} style={{ background:"#160f35",border:`1px solid ${r.status==="pending"?"rgba(249,115,22,.3)":r.status==="approved"?"rgba(34,197,94,.2)":"rgba(239,68,68,.2)"}`,borderRadius:12,padding:"16px 18px" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:12,flexWrap:"wrap" }}>
+                  <span style={{ fontSize:28 }}>{r.avatar}</span>
+                  <div style={{ flex:1,minWidth:120 }}>
+                    <div style={{ color:"#fff",fontWeight:700,fontSize:15 }}>{r.name}</div>
+                    <div style={{ color:"rgba(255,255,255,.4)",fontSize:12,marginTop:2 }}>@{r.username} · {r.date}</div>
+                  </div>
+                  <span style={{ padding:"3px 12px",borderRadius:20,fontSize:11,fontWeight:700,
+                    background:r.status==="pending"?"rgba(249,115,22,.1)":r.status==="approved"?"rgba(34,197,94,.1)":"rgba(239,68,68,.08)",
+                    border:`1px solid ${r.status==="pending"?"rgba(249,115,22,.3)":r.status==="approved"?"rgba(34,197,94,.3)":"rgba(239,68,68,.25)"}`,
+                    color:r.status==="pending"?"#fb923c":r.status==="approved"?"#22c55e":"#f87171" }}>
+                    {r.status==="pending"?"⏳ Pendiente":r.status==="approved"?"✓ Aprobado":"✗ Rechazado"}
+                  </span>
+                  {r.status==="pending"&&(
+                    <div style={{ display:"flex",gap:8 }}>
+                      <button onClick={()=>{
+                        const newId=Math.max(...users.map(u=>u.id))+1;
+                        setDb(prev=>({
+                          ...prev,
+                          users:[...prev.users,{ id:newId,username:r.username,password:r.password,name:r.name,avatar:r.avatar,credits:0,isAdmin:false,role:"player",permissions:{canGiveCredits:false,canApproveCredits:false,canCreateUsers:false,canManageGames:false} }],
+                          registrationRequests:prev.registrationRequests.map(x=>x.id===r.id?{...x,status:"approved"}:x),
+                        }));
+                        toast(`✓ ${r.name} registrado exitosamente`,"success");
+                      }} style={{ background:"rgba(34,197,94,.1)",border:"1px solid rgba(34,197,94,.3)",color:"#22c55e",padding:"6px 14px",borderRadius:7,cursor:"pointer",fontSize:13,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600 }}>
+                        ✓ Aprobar
+                      </button>
+                      <button onClick={()=>setDb(prev=>({...prev,registrationRequests:prev.registrationRequests.map(x=>x.id===r.id?{...x,status:"rejected"}:x)}))} style={{ background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.25)",color:"#f87171",padding:"6px 14px",borderRadius:7,cursor:"pointer",fontSize:13,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600 }}>
+                        ✗ Rechazar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+ 
         {/* ── MODALES ── */}
  
         {/* Editar Usuario */}
@@ -804,3 +861,4 @@ export function AdminPanel({ db, setDb, onLogout, onLobby, toast, triggerManualD
     </div>
   );
 }
+ 

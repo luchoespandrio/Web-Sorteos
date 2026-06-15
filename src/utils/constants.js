@@ -98,6 +98,7 @@ export const CORTITOS_INIT = [
     status: "open",
     seq: [],
     winner: null,
+    drawMode: "auto",
   },
   {
     id: 2,
@@ -112,6 +113,7 @@ export const CORTITOS_INIT = [
     status: "open",
     seq: [],
     winner: null,
+    drawMode: "auto",
   },
   {
     id: 3,
@@ -126,6 +128,7 @@ export const CORTITOS_INIT = [
     status: "open",
     seq: [],
     winner: null,
+    drawMode: "auto",
   },
 ];
  
@@ -183,6 +186,8 @@ export const FRAC_COLORS = {
 };
  
 // Clave para localStorage
+export const REGISTRATION_REQUESTS_INIT = [];
+ 
 export const DB_KEY = "rifasreal_db_v2";
  
 // Colores de las bolas para los cortitos
