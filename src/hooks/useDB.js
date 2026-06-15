@@ -16,7 +16,16 @@ const INIT = {
 function loadDB() {
   try {
     const raw = localStorage.getItem(DB_KEY);
-    return raw ? JSON.parse(raw) : INIT;
+    if (!raw) return INIT;
+    const parsed = JSON.parse(raw);
+    return {
+      users:                parsed.users                || INIT.users,
+      rifas:                parsed.rifas                || INIT.rifas,
+      cortitos:             parsed.cortitos             || INIT.cortitos,
+      planillas:            parsed.planillas            || INIT.planillas,
+      creditRequests:       parsed.creditRequests       || [],
+      registrationRequests: parsed.registrationRequests || [],
+    };
   } catch {
     return INIT;
   }
